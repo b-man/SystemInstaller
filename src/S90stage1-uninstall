@@ -6,10 +6,6 @@
 # Set up environment path variables
 export LVM_SYSTEM_DIR=/boot/etc/lvm
 
-# Set up operation variables
-CREATE_VOLUMES_FLAG=1
-PARTITIONED=0
-
 # Pull in internal configuration information
 . /etc/installer-defaults
 
@@ -44,80 +40,6 @@ media_resize_err() {
     echo "**ERROR: Resizing media volume failed, attempting to repair.**"
     echo "*****************************************************************"
     sleep 3
-}
-
-no_install_config_err() {
-    echo "****************************************************************************************************************"
-    echo "**ERROR: Unable to locate install.conf in /media/internal/osinstall.d/install.conf, rebooting in 30 seconds...**"
-    echo "****************************************************************************************************************"
-    umount_volumes
-    sleep 30
-    system_reboot
-}
-
-no_os_name_err() {
-    echo "***********************************************************"
-    echo "**ERROR: No OS name specified, rebooting in 30 seconds...**"
-    echo "***********************************************************"
-    umount_volumes
-    sleep 30
-    system_reboot
-}
-
-mount_media_err() {
-    echo "**********************************************************************"
-    echo "**ERROR: Unable to mount store/media volume, rebooting in 30 seconds**"
-    echo "**********************************************************************"
-    umount_volumes
-    sleep 30
-    system_reboot
-}
-
-read_config() {
-    # Mount store/media volume so we can pull in configuration information
-    dosfsck -a -v /dev/mapper/store-media
-
-    # If /media/internal doesn't exist, create one
-    if [ ! -d /media/internal ]; then
-        mkdir -p /media/internal
-    fi
-
-    mount -t vfat /dev/store/media /media/internal
-    if [ $? -ne 0 ]; then
-        mount_media_err
-    fi
-	
-    if [ -f /media/internal/osinstall.d/install.conf ]; then
-        cp /media/internal/osinstall.d/install.conf /tmp/config
-        . /tmp/config
-    else
-        no_install_config_err
-    fi
-
-    case ${LVM_SWAPSZ} in
-        *MB)
-            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/'`
-            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
-            ;;
-        *GB)
-            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
-            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
-            ;;
-        *)
-            LVM_SWAPSZ_MB=0
-            echo "No swap space specified."
-            ;;
-    esac
-	
-    # We need to convert the OS name to all lower case for our volume prefixes
-    if [ ${OS_NAME} != "" ]; then
-        LVM_PREFIX=`echo ${OS_NAME} | tr "[:upper:]" "[:lower:]"`
-    else
-        no_os_name_err
-    fi
-    
-    fuser -m /media/internal -k
-    umount /media/internal
 }
 
 # Kill any processes running and unmount filesystems
@@ -178,25 +100,29 @@ uninstall_system() {
     echo "=========================="
     echo "Deleting target volumes..."
     echo "=========================="
-    
-    # We need an intellegent way of knowing what volumes exists that are specific to the target to delete
-    # otherwise lvremove may not work correctly and break the uninstaller
-    
+
+    # We are going to make this simple. We will look at our list of pre-defined suffixes and delete any
+    # matching cases. Though this method will not work at all if we decide to give SystemInstaller the
+    # ability to install multiple OSs along side (tri/quad-boot) each other on the same device, this should
+    # work fine for now.
     SYST_EXISTS=0
     SWAP_EXISTS=0
-    if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} ]; then
-        SYST_EXISTS=1
-    fi
+    for VOLUME in `/boot/usr/sbin/lvm.static lvs | awk '{ print $1 }' | tail -f`; do
+        case ${VOLUME} in
+            *-${LVM_SYSTEM_SUFFIX})
+                echo "System volume ${VOLUME} found, removing..."
+                SYST_EXISTS=1
+                /boot/usr/sbin/lvm.static lvremove -f store/${VOLUME}
+                ;;
+            *-${LVM_SWAP_SUFFIX})
+                echo "Swap volume ${VOLUME} found, removing..."
+                SWAP_EXISTS=1
+                /boot/usr/sbin/lvm.static lvremove -f store/${VOLUME}
+                ;;
+        esac
+    done
 
-    if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX} ]; then
-        SWAP_EXISTS=1
-    fi
-    
-    if [ ${SYST_EXISTS} -eq 1 -a ${SWAP_EXISTS} -eq 1 ]; then
-        /boot/usr/sbin/lvm.static lvremove -f store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX}
-    elif [ ${SYST_EXISTS} -eq 1 -a ${SWAP_EXISTS} -eq 0 ]; then
-        /boot/usr/sbin/lvm.static lvremove -f store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX}
-    elif [ ${SYST_EXISTS} -eq 0 -a ${SWAP_EXISTS} -eq 0 ]; then
+    if [ ${SYST_EXISTS} -eq 0 -a ${SWAP_EXISTS} -eq 0 ]; then
         echo "#############################################################"
         echo "No installations have been detected on this system, skipping."
         echo "#############################################################"
@@ -236,8 +162,7 @@ uninstall_system() {
     elif [ ${MOBOOT_INSTALLED} -eq 1 ]; then
         cd /boot
         rm -rf uImage uImage.moboot moboot.default moboot.timeout
-        rm -rf uImage.webOS moboot.splash.webOS.tga
-        rm -rf uImage.${OS_NAME}
+        rm -rf uImage.webOS moboot.splash.webOS.tga uImage.*
         ln -s ${HP_KERNEL} uImage
     fi
 
@@ -252,4 +177,3 @@ uninstall_system() {
 }
 
 uninstall_system
-
