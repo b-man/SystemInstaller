@@ -10,6 +10,7 @@ By Brian McKenzie - please see "LICENSE" for licensing details and read the warn
 **Ihis installer is in early development and *SHOULD NOT* be used by non-experienced users.**
 *********************************************************************************************
 
+
 What is SystemInstaller?
 ----------------------->
 
@@ -30,7 +31,7 @@ How do I use SystemInstaller?
 
      => A Linux/Mac/Windows computer. (You will need a Linux or Mac computer if you wish to build from source).
 
-     => A little tool from HP/Palm called novacom, you gan grab it from the bottom of the page at http://opensource.palm.com/ .
+     => A little tool from HP/Palm called novacom, you gan grab it from the bottom of the page at http://opensource.palm.com/packages.html .
 
      => A file called install.conf (this is your configuration file - configure to your preference, keep name as install.conf)
         See doc/install.conf.example for an example.
