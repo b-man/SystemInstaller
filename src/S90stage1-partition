@@ -83,6 +83,24 @@ bad_volume_setup_err() {
     system_reboot
 }
 
+low_media_fspace_err() {
+	echo "****************************************************************************************************"
+    echo "**ERROR: Not enough freespace on this system for this OS installation!, rebooting in 30 seconds...**"
+    echo "****************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+no_osname_err() {
+	echo "************************************************************"
+    echo "**ERROR: No OS name specified!, rebooting in 30 seconds...**"
+    echo "************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
 # Make a local copy and read in the config file
 read_config() {
     # Mount store/media volume so we can pull in configuration information
@@ -129,6 +147,14 @@ read_config() {
     esac
 
     LVM_TOTALSZ=$((${LVM_ROOTSZ_MB} + ${LVM_SWAPSZ_MB}))
+    # Before we change anything, check to see if we have enough unoccupied space to begin with
+    echo "Checking if we have enough space for this installation..."
+    MEDIA_FSPACE=`df -m /dev/store/media | awk '{ print $3 }' | tail -n 1`
+    if [ ${MEDIA_FSPACE} \< ${LVM_TOTALSZ} ]; then
+        low_media_fspace_err
+    else
+        echo "You have ${MEDIA_FSPACE}MBs of unoccupied freespace on your system."
+    fi
     echo "******This installation will take up ${LVM_TOTALSZ}MBs of space on your system******"
 
 
@@ -136,14 +162,9 @@ read_config() {
     if [ ${OS_NAME} != "" ]; then
         LVM_PREFIX=`echo ${OS_NAME} | tr "[:upper:]" "[:lower:]"`
     else
-        echo "ERROR: No OS name specified, rebooting in 30 seconds..."
-        umount_volumes
-        fuser -m /media/internal -k
-        umount /media/internal
-        sleep 30
-        system_reboot
-    fi
-    
+        no_osname_err
+    fi  
+
     # Can't have the media volume mounted for resizefat
     fuser -m /media/internal -k
     umount /media/internal
