@@ -99,14 +99,14 @@ read_config() {
         no_install_config_err
     fi
 
-    case ${LVM_BOOTSZ} in
+    case ${LVM_ROOTSZ} in
         *MB)
-            LVM_BOOTSZ_MB=`echo ${LVM_BOOTSZ} | sed 's/\(.*\)../\1/'`
-            echo "> > >[ Specified rootfs volume size - ${LVM_BOOTSZ_MB}MB ]< < <"
+            LVM_ROOTSZ_MB=`echo ${LVM_ROOTSZ} | sed 's/\(.*\)../\1/'`
+            echo "> > >[ Specified rootfs volume size - ${LVM_ROOTSZ_MB}MB ]< < <"
             ;;
         *GB)
-            LVM_BOOTSZ_MB=`echo ${LVM_BOOTSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
-            echo "> > >[ Specified rootfs volume size - ${LVM_BOOTSZ_MB}MB ]< < <"
+            LVM_ROOTSZ_MB=`echo ${LVM_ROOTSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
+            echo "> > >[ Specified rootfs volume size - ${LVM_ROOTSZ_MB}MB ]< < <"
             ;;
         *)
             no_lvm_bootsz_err
@@ -128,7 +128,7 @@ read_config() {
             ;;
     esac
 
-    LVM_TOTALSZ=$((${LVM_BOOTSZ_MB} + ${LVM_SWAPSZ_MB}))
+    LVM_TOTALSZ=$((${LVM_ROOTSZ_MB} + ${LVM_SWAPSZ_MB}))
     echo "******This installation will take up ${LVM_TOTALSZ}MBs of space on your system******"
 
 
@@ -203,7 +203,7 @@ create_volumes() {
     echo "======================="
     echo "Creating new volumes..."
     echo "======================="
-    /boot/usr/sbin/lvm.static lvcreate -L ${LVM_BOOTSZ_MB}M --name ${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} store
+    /boot/usr/sbin/lvm.static lvcreate -L ${LVM_ROOTSZ_MB}M --name ${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} store
     if [ ${LVM_SWAPSZ_MB} -ne 0 ]; then
         /boot/usr/sbin/lvm.static lvcreate -L ${LVM_SWAPSZ_MB}M --name ${LVM_PREFIX}-${LVM_SWAP_SUFFIX} store
     fi
