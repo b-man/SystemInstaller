@@ -1,0 +1,6 @@
+# SystemInstaller configuration file
+# To use this file, place it in /media/internal/osinstall.d and modify to your preference.
+
+OS_NAME="BlargOS"      # Can be anything, but no spaces in name
+LVM_BOOTSZ="3.5GB"     # Size of boot volume in GBs or MBs
+LVM_SWAPSZ="512MB"     # Size of swap partition in GBs or MBs (if used, otherwise leave blank)

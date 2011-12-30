@@ -1,0 +1,76 @@
+++++++++++++++++++++++++++++++++++++
++==================================+
++|| SystemInstaller v0.1 (alpha) ||+
++==================================+
+++++++++++++++++++++++++++++++++++++
+
+By Brian McKenzie - please see "LICENSE" for licensing details and read the warnings for this early build
+
+*********************************************************************************************
+**Ihis installer is in early development and *SHOULD NOT* be used by non-experienced users.**
+*********************************************************************************************
+
+What is SystemInstaller?
+----------------------->
+
+ * Based on design concepts of ACMEInstaller, SystemInstaller is an open-source tool
+   designed to be a configurable OS installer for the HP TouchPad. Hopefully in the 
+   near future, we are going to unify the SystemInstaller with the uninstaller and
+   create a nice little GUI to eleminate the need for a config file.
+
+What is SystemUninstaller? (**DO NOT USE - READ BELOW**)
+------------------------->
+
+ * SystemUninstaller simply reverses what SystemInstaller does. :)
+
+How do I use SystemInstaller?
+---------------------------->
+
+ * SystemInstaller is designed with simplicity in mind. You will need to have the following to use it:
+
+     => A Linux/Mac/Windows computer. (You will need a Linux or Mac computer if you wish to build from source).
+
+     => A little tool from HP/Palm called novacom, you gan grab it from the bottom of the page at http://opensource.palm.com/ .
+
+     => A file called install.conf (this is your configuration file - configure to your preference, keep name as install.conf)
+        See doc/install.conf.example for an example.
+
+     => A root filesystem image of the OS you wish to install. (This can be in tar/gzip or tar/bzip format, but *MUST* have 'rootfs' in it's filename).
+
+     => A kernel image for the OS you wish to install. (The name of this file should just be 'uImage' and nothing more).
+
+     => A small bootloader program called moboot, you can obtain a copy at http://code.google.com/p/moboot - do NOT change the file name or unpack the zip!
+        (NOTE: the bootloader is not necessary as SystemInstaller provides it's own, but it is highly recommended that you provide your own updated copy)
+
+ * To run SystemInstaller, use the following steps:
+
+    1.) If you are rebuilding from source, cd into the source directory and type 'make'. this will generate the installer/uninstaller. Otherwise skip to 2.
+
+    2.) Plug the HP TouchPad into your computer and make sure it is mounted. (you should see 'HP TOUCHPAD' under 'My Compyter' in Windows, in 'Places' under
+        Ubuntu Linux, or on the desktop in Mac OSX.
+
+    3.) When you navigate to 'HP TOUCHPAD', create a folder called 'osinstall.d' and place your config file, kernel, rootfs archive, and bootloader in that folder.
+
+    4.) Shut down your HP TouchPad, then press the power and volume up buttons to activate bootie mode - you should see a usb logo appear on the tablet's screen.
+
+    5.) Open a command prompt or terminal window, navigate to the osinstall.d folder, and run:
+        novacom boot mem:// < SystemInstaller
+
+        Please be patient as the installer will take anything from a couple of minutes to an hour depending on the size of your OS installation.
+        You can watch the tablet's screen for activity and any notices/warnings as the installation takes place.
+
+    6.) After the installation is completed, the tablet should reboot into moboot's boot menu. Use the volume buttons and home button to make your selection. Enjoy!
+
+
+How do I use SystemUninstaller? (***DO NOT USE YET - STILL IN EARLY DEVELOPMENT AND MAY NOT WORK AT ALL!***)
+------------------------------>
+
+    1.) Follow steps 2 and 4 above.
+
+    2.) Open a command prompt or terminal window and run:
+        novacom boot mem:// < SystemUninstaller
+
+        Wait a minute or two for the uninstaller to do it's work. your done!
+
+
+For any questions or suggestions, email me at <mckenzba@gmail.com> or poke me on IRC at ##touchpad-dev on irc.freenode.net - good luck!

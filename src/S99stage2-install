@@ -1,0 +1,351 @@
+# S99stage2-install: unpack filesystem and install moboot
+# Copyright (C) 2011 Brian McKenzie, All Rights Reserved
+# For any questions, email me at <mckenzba@gmail.com>
+# You may redistribute and modify this file under the GPL license
+
+# Set up environment path variables
+export LVM_SYSTEM_DIR=/boot/etc/lvm
+
+# Pull in internal configuration information
+. /etc/installer-defaults
+
+system_reboot() {
+    sync
+    reboot
+    exit 1 # Failsafe
+}
+
+# Mount all volumes that are to be used for the installation
+mount_volumes() {
+    echo "======================="
+    echo "Mounting filesystems..."
+    echo "======================="
+
+    cd /
+
+    # If /mnt/target doesn't exist, make one
+    if [ ! -d /mnt/${LVM_PREFIX} ]; then
+        mkdir -p /mnt/${LVM_PREFIX}
+    fi
+
+    # Set up tmpfs environment for mountpoint
+    mount -t tmpfs none /mnt/${LVM_PREFIX}
+    mkdir -p /mnt/${LVM_PREFIX}/system
+
+    # Check filesystem for any errors and mount
+    fsck -fy /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX}
+    mount -t ext4 /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} /mnt/${LVM_PREFIX}/system
+
+    # Check media filesystem for any errors and mount
+    /mnt/webos/usr/sbin/fsck.vfat -v -a /dev/store/media
+    mount -t vfat /dev/store/media /media/internal
+}
+
+# Kill any processes running and unmount filesystems
+umount_volumes() {
+    echo "========================="
+    echo "Unmounting filesystems..."
+    echo "========================="
+
+    cd /
+
+    fuser -m /media/internal -k
+    fuser -m /mnt/${LVM_PREFIX}/system -k
+    fuser -m /mnt/webos -k
+    fuser -m /boot -k
+    umount /mnt/${LVM_PREFIX}/system
+    umount /media/internal
+    umount /mnt/webos
+    umount /boot
+    sync
+}
+
+# Error functions
+boot_out_of_memory_err() {
+    echo "********************************************************************************************"
+    echo "**ERROR: Unable to install bootloader - out of space in /boot?, rebooting in 30 seconds...**"
+    echo "********************************************************************************************"
+    rm -rf /boot/uImage.moboot
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+kern_out_of_memory_err() {
+    echo "************************************************************************************************"
+    echo "**ERROR: Unable to install target kernel - out of memory in /boot?, rebooting in 30 seconds...**"
+    echo "************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+rootfs_unpack_err() {
+    echo "**********************************************************************************************************"
+    echo "**ERROR: Unable to unpack - bad archive or not enough space in target volume, rebooting in 30 seconds...**"
+    echo "**********************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+no_osinstalld_err() {
+    echo "***********************************************************************************"
+    echo "**ERROR: Unable to access /media/internal/osinstall.d, rebooting in 30 seconds...**"
+    echo "***********************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+rootfs_not_found_err() {
+    echo "*******************************************************************************"
+    echo "**ERROR: Unable to locate target's rootfs tarball, rebooting in 30 seconds...**"
+    echo "*******************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+kernel_not_found_err() {
+    echo "***********************************************************************"
+    echo "**ERROR: Unable to locate target's kernel, rebooting in 30 seconds...**"
+    echo "***********************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+no_os_name_err() {
+    echo "***********************************************************"
+    echo "**ERROR: No OS name specified, rebooting in 30 seconds...**"
+    echo "***********************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+read_config() {
+	# Pull in the local copy this time
+	. /tmp/config
+	
+    # We need to convert the OS name to all lower case for our volume prefixes
+    if [ ${OS_NAME} != "" ]; then
+        LVM_PREFIX=`echo ${OS_NAME} | tr "[:upper:]" "[:lower:]"`
+    else
+        no_os_name_err
+    fi
+}
+
+install_target() {
+    # Read configuration information and mount all volumes to be used
+    read_config
+    mount_volumes
+
+    sleep 3
+
+    # If /boot/update-uimage exists, delete it to make room for moboot. This file will be re-created by webos when needed.
+    if [ -e /boot/update-uimage ]; then
+        rm -rf /boot/update-uimage
+    fi
+
+    # Only we should be able to write data from now on
+    umask 022
+
+    # Grab the media volume id to configure fstab
+    MEDIA_VOLUME_ID=`/boot/usr/sbin/lvm.static lvdisplay -c store/media | awk -F: '{print $13}'`
+
+    # check to see if /media/interna/osinstall.d folder exists, otherwise abort the installation
+    echo "==================================================="
+    echo "Scanning for OS install files in /media/internal..."
+    echo "==================================================="
+    if [ ! -d /media/internal/osinstall.d ]; then
+        no_osinstalld_err
+    fi
+
+    cd /media/internal/osinstall.d
+
+    # Scan /media/internal/osinstall.d for installation files and unpack them to their volumes
+    echo "================================================================="
+    echo "Scanning for installation files in /media/internal/osinstall.d..."
+    echo "================================================================="
+    for INSTALL_FILE in `ls ./* | sed 's/..\(.*\)/\1/'`; do
+        if [ -e ${INSTALL_FILE} ]; then
+            case ${INSTALL_FILE} in
+                *moboot*.zip)
+                    FILETYPE="bootloader_zip"
+                    if [ ! -f /tmp/bootldr_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        touch /tmp/bootldr_found
+                    fi
+                    ;;
+                *moboot*.tar.gz|*moboot*.tgz)
+                    FILETYPE="bootloader_tgz"
+                    if [ ! -f /tmp/bootldr_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        touch /tmp/bootldr_found
+                    fi
+                    ;;
+                *moboot*.tar.bz2|*moboot*.tbz2)
+                    FILETYPE="bootloader_tbz2"
+                    if [ ! -f /tmp/bootldr_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        touch /tmp/bootldr_found
+                    fi
+                    ;;
+                *rootfs*.tar.gz|*rootfs*.tgz)
+                    FILETYPE="rootfs_tgz"
+                    if [ ! -f /tmp/rootfs_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        touch /tmp/rootfs_found
+                    fi
+                    ;;
+                *rootfs*.tar.bz2|*rootfs*.tbz2)
+                    FILETYPE="rootfs_tbz2"
+                    if [ ! -f /tmp/rootfs_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        touch /tmp/rootfs_found
+                    fi
+                    ;;
+                *uImage*)
+                    FILETYPE="uimage"
+                    if [ ! -f /tmp/kernel_installed ]; then
+                        echo "> > >[ found ${INSTALL_FILE} type ${FILETYPE} ]< < <"
+                        rm -f /tmp/pending_kernel
+                        touch /tmp/kernel_found
+                    fi
+                    ;;
+                *)
+                    FILETYPE="none"
+                    echo "ignoring unknown files"
+                    ;;
+            esac
+
+            # Install user provided moboot bootloader if one is provided
+            if [ -f /tmp/bootldr_found -a ! -f /tmp/bootldr_installed ]; then
+                echo "==============================="
+                echo "Installing moboot bootloader..."
+                echo "==============================="
+                mkdir tmp/
+                cd tmp/
+                case ${FILETYPE} in
+                    bootloader_zip)
+                        unzip -o ../${INSTALL_FILE}
+                        cp -a uImage.moboot* /boot/uImage.moboot
+                        if [ $? -ne 0 ]; then
+                            boot_out_of_memory_err
+                        fi
+                        ;;
+                    bootloader_tgz)
+                        tar -zxvpf ../${INSTALL_FILE}
+                        cp -a uImage.moboot* /boot/uImage.moboot
+                        if [ $? -ne 0 ]; then
+                            boot_out_of_memory_err
+                        fi
+                        ;;
+                    bootloader_tbz2)
+                        tar -jxvpf ../${INSTALL_FILE}
+                        cp -a uImage.moboot* /boot/uImage.moboot
+                        if [ $? -ne 0 ]; then
+                            boot_out_of_memory_err
+                        fi
+                        ;;
+                esac
+                touch /tmp/bootldr_installed
+                cd ../ && rm -rf tmp/
+            fi
+
+            # If moboot wasn't provided, fall back on local copy
+            if [ ! -f /tmp/bootldr_found -a ! -f /tmp/bootldr_installed ]; then
+                echo "########################################################################################################################################"
+                echo "Unable to locate bootloader in /media/internal/osinstall.d, installing moboot local version 0.3.5, be sure to upgrade this when you can."
+                echo "########################################################################################################################################"
+                cp -a /root/uImage.moboot_0.3.5 /boot/uImage.moboot
+                touch /tmp/bootldr_installed
+            fi
+            if [ $? -ne 0 ]; then
+                boot_out_of_memory_err
+            fi
+
+            # Install root filesystem image to the target volume
+            if [ -f /tmp/rootfs_found  -a ! -f /tmp/roofts_installed ]; then
+                echo "==================================="
+                echo "Installing root filesystem image..."
+                echo "==================================="
+                case ${FILETYPE} in
+                    rootfs_tgz)
+                        tar -zxvpf ${INSTALL_FILE} -C /mnt/${LVM_PREFIX}/system/
+                        if [ $? -ne 0 ]; then
+                            rootfs_unpack_err
+                        fi
+                        ;;
+                    rootfs_tbz2)
+                        tar -jxvpf ${INSTALL_FILE} -C /mnt/${LVM_PREFIX}/system/
+                        if [ $? -ne 0 ]; then
+                            rootfs_unpack_err
+                        fi
+                        ;;
+                esac
+                touch /tmp/roofts_installed
+            fi
+
+            # Install the target's kernel
+            if [ -f /tmp/kernel_found -a ! -f /tmp/kernel_installed ]; then
+                echo "========================"
+                echo "Installing target kernel"
+                echo "========================"
+                cp -a ${INSTALL_FILE} /boot/uImage.${OS_NAME}
+                touch /tmp/kernel_installed
+            fi
+            if [ $? -ne 0 ]; then
+                  kern_out_of_memory_err
+            fi
+
+        fi
+    done
+
+    # Check to see if the target's root filesystem tarball really exists
+    if [ ! -f /tmp/rootfs_found -a ! -f /tmp/rootfs_installed ]; then
+        rootfs_not_found_err
+    fi
+
+    # Check to see if the kernel really exists
+    if [ ! -f /tmp/kernel_found -a ! -f /tmp/kernel_installed ]; then
+        kernel_not_found_err
+    fi
+
+    # Configure moboot for dual boot setup
+    if [ ! -f /tmp/bootldr_configured ]; then
+        echo "================================"
+        echo "Configuring moboot bootloader..."
+        echo "================================"
+        HP_KERNEL=`ls /boot/uImage*-palm-tenderloin | sed 's/......\(.*\)/\1/'`
+        case `readlink /boot/uImage` in
+            *uImage.moboot*)
+                rm -rf /boot/uImage;;
+            *)
+                mv /boot/uImage /boot/uImage.webOS;;
+        esac
+        cd /boot
+        ln -s uImage.moboot uImage
+        ln -s ${HP_KERNEL} uImage.webOS
+        echo -n "webOS" > /boot/moboot.default
+        echo -n "10" > /boot/moboot.timeout
+        if [ ! -f /boot/moboot.splash.webOS.tga ]; then
+            zcat /boot/boot-images.tar.gz | tar -C /boot -xvpf - BootLogo.tga
+            mv /boot/BootLogo.tga /boot/moboot.splash.webOS.tga
+        fi
+        touch /tmp/bootldr_configured
+    fi
+
+    echo "============================="
+    echo "=+++++++++++++++++++++++++++="
+    echo "=+ [Installation complete] +="
+    echo "=+++++++++++++++++++++++++++="
+    echo "============================="
+    umount_volumes
+    sleep 10
+    system_reboot
+}
+
+install_target

@@ -1,0 +1,275 @@
+# S90stage1-partition: Create and format new volumes
+# Copyright (C) 2011 Brian McKenzie, All Rights Reserved.
+# For any questions, email me at <mckenzba@gmail.com>
+# You may redistribute and modify this file under the GPL license.
+
+# Set up environment path variables
+export LVM_SYSTEM_DIR=/boot/etc/lvm
+
+# Pull in internal configuration information
+. /etc/installer-defaults
+
+# Set up operation variables
+CREATE_VOLUMES_FLAG=1
+PARTITIONED=0
+
+system_reboot() {
+    sync
+    reboot
+    exit 1 # Failsafe
+}
+
+# Error functions
+no_install_config_err() {
+    echo "****************************************************************************************************************"
+    echo "**ERROR: Unable to locate install.conf in /media/internal/osinstall.d/install.conf, rebooting in 30 seconds...**"
+    echo "****************************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+no_lvm_bootsz_err() {
+    echo "**********************************************************************"
+    echo "**ERROR: No rootfs volume size specified, rebooting in 30 seconds...**"
+    echo "**********************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+mount_media_err() {
+    echo "**********************************************************************"
+    echo "**ERROR: Unable to mount store/media volume, rebooting in 30 seconds**"
+    echo "**********************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+media_resize_err() {
+    echo "*********************************************************************"
+    echo "**ERROR: Unable to resize media volume!, rebooting in 30 seconds...**"
+    echo "*********************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+media_resize_fs_err() {
+    echo "***********************************************************************************"
+    echo "**ERROR: Unable to resize filesystem on media volume!, rebooting in 30 seconds...**"
+    echo "***********************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+lvm_start_err() {
+    echo "***********************************************************"
+    echo "**ERROR: Unable to start LVM!, rebooting in 30 seconds...**"
+    echo "***********************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+bad_volume_setup_err() {
+    echo "*********************************************************************************************"
+    echo "**ERROR: Damaged installation with broken LVM volumes detected!, rebooting in 30 seconds...**"
+    echo "*********************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+# Make a local copy and read in the config file
+read_config() {
+    # Mount store/media volume so we can pull in configuration information
+    /mnt/webos/usr/sbin/fsck.vfat -a -v /dev/mapper/store-media
+    mount -t vfat /dev/store/media /media/internal
+    if [ $? -ne 0 ]; then
+        mount_media_err
+    fi
+	
+    if [ -f /media/internal/osinstall.d/install.conf ]; then
+        cp /media/internal/osinstall.d/install.conf /tmp/config
+        . /tmp/config
+    else
+        no_install_config_err
+    fi
+
+    case ${LVM_BOOTSZ} in
+        *MB)
+            LVM_BOOTSZ_MB=`echo ${LVM_BOOTSZ} | sed 's/\(.*\)../\1/'`
+            echo "> > >[ Specified rootfs volume size - ${LVM_BOOTSZ_MB}MB ]< < <"
+            ;;
+        *GB)
+            LVM_BOOTSZ_MB=`echo ${LVM_BOOTSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
+            echo "> > >[ Specified rootfs volume size - ${LVM_BOOTSZ_MB}MB ]< < <"
+            ;;
+        *)
+            no_lvm_bootsz_err
+            ;;
+    esac
+
+    case ${LVM_SWAPSZ} in
+        *MB)
+            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/'`
+            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
+            ;;
+        *GB)
+            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
+            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
+            ;;
+        *)
+            LVM_SWAPSZ_MB=0
+            echo "No swap space specified."
+            ;;
+    esac
+
+    LVM_TOTALSZ=$((${LVM_BOOTSZ_MB} + ${LVM_SWAPSZ_MB}))
+    echo "******This installation will take up ${LVM_TOTALSZ}MBs of space on your system******"
+
+
+    # We need to convert the OS name to all lower case for our volume prefixes
+    if [ ${OS_NAME} != "" ]; then
+        LVM_PREFIX=`echo ${OS_NAME} | tr "[:upper:]" "[:lower:]"`
+    else
+        echo "ERROR: No OS name specified, rebooting in 30 seconds..."
+        umount_volumes
+        fuser -m /media/internal -k
+        umount /media/internal
+        sleep 30
+        system_reboot
+    fi
+    
+    # Can't have the media volume mounted for resizefat
+    fuser -m /media/internal -k
+    umount /media/internal
+}
+
+# Kill any processes running and unmount filesystems
+umount_volumes() {
+    echo "Unmounting filesystems..."
+    cd /
+    fuser -m /mnt/webos -k
+    fuser -m /boot -k
+    fuser -m /tmp -k
+    umount /mnt/webos
+    umount /boot
+    umount /tmp
+    sync
+}
+
+# Format the volumes
+format_volumes() {
+    echo "====================="
+    echo "Formatting volumes..."
+    echo "====================="
+
+    /mnt/webos/sbin/mkfs.ext3 /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX}
+
+    # Only run mkswap if we have a swap partition
+    if [ ${LVM_SWAPSZ_MB} -ne 0 ]; then
+        /mnt/webos/sbin/mkswap /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX}
+    fi
+}
+
+# Create the volumes
+create_volumes() {
+    echo "========================"
+    echo "Editing volume layout..."
+    echo "========================"
+
+    # Begin by shrinking media volume size
+    echo "Shrinking media volume by ${LVM_TOTALSZ}MBs..."
+    /mnt/webos/usr/sbin/fsck.vfat -a -v /dev/mapper/store-media
+    NEW_VOLUME_SIZE=$(((`/boot/usr/sbin/lvm.static lvdisplay -c store/media | awk -F: '{print $7/2048}'`) - ${LVM_TOTALSZ}))
+    echo "New calculated media volume size: ${NEW_VOLUME_SIZE} MBs"
+    LD_LIBRARY_PATH=/mnt/webos/usr/lib /mnt/webos/bin/resizefat /dev/store/media ${NEW_VOLUME_SIZE}M
+
+    if [ $? -ne 0 ]; then
+        media_resize_fs_err
+    fi
+
+    /boot/usr/sbin/lvm.static lvreduce -f -L ${NEW_VOLUME_SIZE}M /dev/mapper/store-media
+
+    if [ $? -ne 0 ]; then
+        media_resize_err
+    fi
+
+    # Set up the new volumes
+    echo "======================="
+    echo "Creating new volumes..."
+    echo "======================="
+    /boot/usr/sbin/lvm.static lvcreate -L ${LVM_BOOTSZ_MB}M --name ${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} store
+    if [ ${LVM_SWAPSZ_MB} -ne 0 ]; then
+        /boot/usr/sbin/lvm.static lvcreate -L ${LVM_SWAPSZ_MB}M --name ${LVM_PREFIX}-${LVM_SWAP_SUFFIX} store
+    fi
+
+    # Proceed to format newley created volumes
+    format_volumes
+}
+
+setup_system() {
+    # If we don't have /boot, make one
+    if [ ! -d /boot ]; then
+	    mkdir /boot
+    fi
+
+    # Check filesystem and mount /boot
+    fsck -fy /dev/${SYS_BOOT_PART}
+    mount -t ext3 /dev/${SYS_BOOT_PART} /boot
+
+    # Initiate LVM
+    /boot/usr/sbin/lvm.static vgchange -ay
+
+    if [ $? -ne 0 -o ! -d /dev/store ]; then
+        lvm_start_err
+    fi
+
+    # If /media/internal doesn't exist, make one
+    if [ ! -d /media/internal ]; then
+        mkdir -p /media/internal
+    fi
+    
+    # Read installation information
+    read_config
+
+    # Check to see if we are just re-installing. If so, save some time and don't re-create the volumes.
+    if [ -e /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} -o -e /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX} ]; then
+        echo "#########################################################"
+        echo "Previous installation detected - skipping volume creation"
+        echo "#########################################################"
+        CREATE_VOLUMES_FLAG=0
+        format_volumes
+    else
+        # Check to see if this is a first-time installation, or if we have a broken setup
+        if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} -a ! -e /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX} ]; then
+            break;
+        else
+            if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} -o ! -e /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX} -a ${LVM_SWAPSZ_MB} -ne 0]; then
+                bad_volume_setup_err
+            fi
+        fi
+    fi
+
+    # If we don't have /mnt/webos, make one
+    if [ ! -d /mnt/webos ]; then
+        mkdir -p /mnt/webos
+    fi
+
+    # Check filesystem and mount /mnt/webos
+    fsck -fy /dev/store/root
+    mount -t ext3 -o ro /dev/store/root /mnt/webos
+
+    if [ ${CREATE_VOLUMES_FLAG} -eq 1 ]; then
+        create_volumes
+    fi
+}
+
+setup_system
+
+# Set flag for stage 2
+export PARTITIONED=1

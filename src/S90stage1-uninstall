@@ -1,0 +1,255 @@
+# S99stage1-uninstall: delete volumes and remove moboot
+# Copyright (C) 2011 Brian McKenzie, All Rights Reserved
+# For any questions, email me at <mckenzba@gmail.com>
+# You may redistribute and modify this file under the GPL license
+
+# Set up environment path variables
+export LVM_SYSTEM_DIR=/boot/etc/lvm
+
+# Set up operation variables
+CREATE_VOLUMES_FLAG=1
+PARTITIONED=0
+
+# Pull in internal configuration information
+. /etc/installer-defaults
+
+system_reboot() {
+    sync
+    reboot
+    exit 1 # Failsafe
+}
+
+# Error functions
+lvm_start_err() {
+    echo "***********************************************************"
+    echo "**ERROR: Unable to start LVM!, rebooting in 30 seconds...**"
+    echo "***********************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+media_repair_err() {
+    echo "**********************************************************************************************************"
+    echo "**ERROR: Unable to repair media volume!                                                                 **"
+    echo "**Please use webOS Doctor at http://www.palm.com/ROM to repair your TouchPad, rebooting in 30 seconds...**"
+    echo "**********************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+media_resize_err() {
+    echo "*****************************************************************"
+    echo "**ERROR: Resizing media volume failed, attempting to repair.**"
+    echo "*****************************************************************"
+    sleep 3
+}
+
+no_install_config_err() {
+    echo "****************************************************************************************************************"
+    echo "**ERROR: Unable to locate install.conf in /media/internal/osinstall.d/install.conf, rebooting in 30 seconds...**"
+    echo "****************************************************************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+no_os_name_err() {
+    echo "***********************************************************"
+    echo "**ERROR: No OS name specified, rebooting in 30 seconds...**"
+    echo "***********************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+mount_media_err() {
+    echo "**********************************************************************"
+    echo "**ERROR: Unable to mount store/media volume, rebooting in 30 seconds**"
+    echo "**********************************************************************"
+    umount_volumes
+    sleep 30
+    system_reboot
+}
+
+read_config() {
+    # Mount store/media volume so we can pull in configuration information
+    dosfsck -a -v /dev/mapper/store-media
+
+    # If /media/internal doesn't exist, create one
+    if [ ! -d /media/internal ]; then
+        mkdir -p /media/internal
+    fi
+
+    mount -t vfat /dev/store/media /media/internal
+    if [ $? -ne 0 ]; then
+        mount_media_err
+    fi
+	
+    if [ -f /media/internal/osinstall.d/install.conf ]; then
+        cp /media/internal/osinstall.d/install.conf /tmp/config
+        . /tmp/config
+    else
+        no_install_config_err
+    fi
+
+    case ${LVM_SWAPSZ} in
+        *MB)
+            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/'`
+            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
+            ;;
+        *GB)
+            LVM_SWAPSZ_MB=`echo ${LVM_SWAPSZ} | sed 's/\(.*\)../\1/' | awk '{print int($1 * 1024)}'`
+            echo "> > >[ Specified swap volume size - ${LVM_SWAPSZ_MB}MB ]< < <"
+            ;;
+        *)
+            LVM_SWAPSZ_MB=0
+            echo "No swap space specified."
+            ;;
+    esac
+	
+    # We need to convert the OS name to all lower case for our volume prefixes
+    if [ ${OS_NAME} != "" ]; then
+        LVM_PREFIX=`echo ${OS_NAME} | tr "[:upper:]" "[:lower:]"`
+    else
+        no_os_name_err
+    fi
+    
+    fuser -m /media/internal -k
+    umount /media/internal
+}
+
+# Kill any processes running and unmount filesystems
+umount_volumes() {
+    echo "========================="
+    echo "Unmounting filesystems..."
+    echo "========================="
+
+    cd /
+
+    fuser -m /mnt/webos -k
+    fuser -m /boot -k
+    umount /mnt/webos
+    umount /boot
+    sync
+}
+
+# Mount all volumes that are to be used for the installation
+mount_boot() {
+    echo "=========================="
+    echo "Mounting boot partition..."
+    echo "=========================="
+
+    cd /
+
+    # If /boot doesn't exist, make one
+    if [ ! -d /boot ]; then
+        mkdir -p /boot
+    fi
+
+    # Check filesystems for any errors and mount
+    fsck -fy /dev/${SYS_BOOT_PART}
+    mount -t ext3 /dev/${SYS_BOOT_PART} /boot
+}
+
+uninstall_system() {
+    mount_boot
+
+    # Initiate LVM
+    /boot/usr/sbin/lvm.static vgchange -ay
+
+    # Check if LVM started successfully
+    if [ $? -ne 0 -o ! -d /dev/store ]; then
+        lvm_start_err
+    fi
+
+    # Get configuration information
+    read_config
+
+    # If /mnt/webos doesn't exist, make one.
+    if [ ! -d /mnt/webos ]; then
+        mkdir -p /mnt/webos
+    fi
+
+    fsck -fy /dev/store/root
+    mount -t ext3 -o rw /dev/store/root /mnt/webos
+
+    echo "=========================="
+    echo "Deleting target volumes..."
+    echo "=========================="
+    
+    # We need an intellegent way of knowing what volumes exists that are specific to the target to delete
+    # otherwise lvremove may not work correctly and break the uninstaller
+    
+    SYST_EXISTS=0
+    SWAP_EXISTS=0
+    if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} ]; then
+        SYST_EXISTS=1
+    fi
+
+    if [ ! -e /dev/store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX} ]; then
+        SWAP_EXISTS=1
+    fi
+    
+    if [ ${SYST_EXISTS} -eq 1 -a ${SWAP_EXISTS} -eq 1 ]; then
+        /boot/usr/sbin/lvm.static lvremove -f store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} store/${LVM_PREFIX}-${LVM_SWAP_SUFFIX}
+    elif [ ${SYST_EXISTS} -eq 1 -a ${SWAP_EXISTS} -eq 0 ]; then
+        /boot/usr/sbin/lvm.static lvremove -f store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX}
+    elif [ ${SYST_EXISTS} -eq 0 -a ${SWAP_EXISTS} -eq 0 ]; then
+        echo "#############################################################"
+        echo "No installations have been detected on this system, skipping."
+        echo "#############################################################"
+    fi
+
+    # Calculate the free space that is now available in the volume group and resize store/media accordingly
+    FREE_VGSPACE=`/boot/usr/sbin/lvm.static vgdisplay -c store | awk -F: '{print $16}'`
+    /boot/usr/sbin/lvm.static lvresize -l +$((${FREE_VGSPACE} - 1)) store/media
+
+    # resize fat partiton to match new store/media size
+    FREE_LVSPACE=`/boot/usr/sbin/lvm.static lvdisplay -c store/media | awk -F: '{print $7/2048}'`
+    LD_LIBRARY_PATH=/mnt/webos/usr/lib /mnt/webos/bin/resizefat /dev/store/media ${FREE_LVSPACE}M
+    if [ $? -ne 0 ]; then
+        media_resize_err
+        /mnt/webos/usr/sbin/dosfsck -a /dev/mapper/media
+        if [ $? -ne 0 ]; then
+            media_repair_err
+        fi
+    fi
+
+    echo "=================="
+    echo "Deleting moboot..."
+    echo "=================="
+    HP_KERNEL=`ls /boot/uImage*-palm-tenderloin | sed 's/......\(.*\)/\1/'`
+    case `readlink /boot/uImage` in
+        *uImage.moboot*)
+            MOBOOT_INSTALLED=1
+            ;;
+        *)
+            MOBOOT_INSTALLED=0
+    esac
+
+    if [ ${MOBOOT_INSTALLED} -ne 1 ]; then
+        echo "############################################################"
+        echo "No installation of moboot detected on this system, skipping."
+        echo "############################################################"
+    elif [ ${MOBOOT_INSTALLED} -eq 1 ]; then
+        cd /boot
+        rm -rf uImage uImage.moboot moboot.default moboot.timeout
+        rm -rf uImage.webOS moboot.splash.webOS.tga
+        rm -rf uImage.${OS_NAME}
+        ln -s ${HP_KERNEL} uImage
+    fi
+
+    echo "==============================="
+    echo "=+++++++++++++++++++++++++++++="
+    echo "=+ [Uninstallation complete] +="
+    echo "=+++++++++++++++++++++++++++++="
+    echo "==============================="
+    umount_volumes
+    sleep 10
+    system_reboot
+}
+
+uninstall_system
+
