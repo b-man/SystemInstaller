@@ -84,7 +84,7 @@ bad_volume_setup_err() {
 }
 
 low_media_fspace_err() {
-	echo "****************************************************************************************************"
+    echo "****************************************************************************************************"
     echo "**ERROR: Not enough freespace on this system for this OS installation!, rebooting in 30 seconds...**"
     echo "****************************************************************************************************"
     umount_volumes
@@ -93,7 +93,7 @@ low_media_fspace_err() {
 }
 
 no_osname_err() {
-	echo "************************************************************"
+    echo "************************************************************"
     echo "**ERROR: No OS name specified!, rebooting in 30 seconds...**"
     echo "************************************************************"
     umount_volumes
@@ -150,7 +150,7 @@ read_config() {
     # Before we change anything, check to see if we have enough unoccupied space to begin with
     echo "Checking if we have enough space for this installation..."
     MEDIA_FSPACE=`df -m /dev/store/media | awk '{ print $4 }' | tail -n 1`
-    if [ ${MEDIA_FSPACE} \< ${LVM_TOTALSZ} ]; then
+    if [ ${MEDIA_FSPACE} -lt ${LVM_TOTALSZ} ]; then
         low_media_fspace_err
     else
         echo "You have ${MEDIA_FSPACE}MBs of unoccupied freespace on your system."
