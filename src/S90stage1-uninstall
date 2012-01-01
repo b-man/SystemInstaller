@@ -86,9 +86,6 @@ uninstall_system() {
         lvm_start_err
     fi
 
-    # Get configuration information
-    read_config
-
     # If /mnt/webos doesn't exist, make one.
     if [ ! -d /mnt/webos ]; then
         mkdir -p /mnt/webos
@@ -137,7 +134,7 @@ uninstall_system() {
     LD_LIBRARY_PATH=/mnt/webos/usr/lib /mnt/webos/bin/resizefat /dev/store/media ${FREE_LVSPACE}M
     if [ $? -ne 0 ]; then
         media_resize_err
-        /mnt/webos/usr/sbin/dosfsck -a /dev/mapper/media
+        dosfsck -a /dev/mapper/media
         if [ $? -ne 0 ]; then
             media_repair_err
         fi

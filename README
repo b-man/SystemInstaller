@@ -19,7 +19,7 @@ What is SystemInstaller?
    near future, we are going to unify the SystemInstaller with the uninstaller and
    create a nice little GUI to eleminate the need for a config file.
 
-What is SystemUninstaller? (**DO NOT USE - READ BELOW**)
+What is SystemUninstaller?
 ------------------------->
 
  * SystemUninstaller simply reverses what SystemInstaller does. :)
@@ -63,7 +63,7 @@ How do I use SystemInstaller?
     6.) After the installation is completed, the tablet should reboot into moboot's boot menu. Use the volume buttons and home button to make your selection. Enjoy!
 
 
-How do I use SystemUninstaller? (***DO NOT USE YET - STILL IN EARLY DEVELOPMENT AND MAY NOT WORK AT ALL!***)
+How do I use SystemUninstaller?
 ------------------------------>
 
     1.) Follow steps 2 and 4 above.
