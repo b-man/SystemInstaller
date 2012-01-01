@@ -149,7 +149,7 @@ read_config() {
     LVM_TOTALSZ=$((${LVM_ROOTSZ_MB} + ${LVM_SWAPSZ_MB}))
     # Before we change anything, check to see if we have enough unoccupied space to begin with
     echo "Checking if we have enough space for this installation..."
-    MEDIA_FSPACE=`df -m /dev/store/media | awk '{ print $3 }' | tail -n 1`
+    MEDIA_FSPACE=`df -m /dev/store/media | awk '{ print $4 }' | tail -n 1`
     if [ ${MEDIA_FSPACE} \< ${LVM_TOTALSZ} ]; then
         low_media_fspace_err
     else
