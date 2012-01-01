@@ -37,7 +37,7 @@ mount_volumes() {
     mount -t ext4 /dev/store/${LVM_PREFIX}-${LVM_SYSTEM_SUFFIX} /mnt/${LVM_PREFIX}/system
 
     # Check media filesystem for any errors and mount
-    /mnt/webos/usr/sbin/fsck.vfat -v -a /dev/store/media
+    dosfsck -v -a /dev/store/media
     mount -t vfat /dev/store/media /media/internal
 }
 
