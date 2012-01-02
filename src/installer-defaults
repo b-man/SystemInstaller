@@ -1,0 +1,11 @@
+# Internal configuration information for SystemInstaller
+# DO NOT edit unless you know what you are doing!
+
+# Default volume suffixes (for target)
+LVM_SYSTEM_SUFFIX=system
+LVM_SWAP_SUFFIX=swap
+LVM_MEDIA_SUFFIX=media
+LVM_BACKUP_SUFFIX=backup
+
+# Device used by /boot (for system)
+SYS_BOOT_PART=mmcblk0p13

@@ -10,6 +10,7 @@ By Brian McKenzie - please see "LICENSE" for licensing details and read the warn
 **Ihis installer is in early development and *SHOULD NOT* be used by non-experienced users.**
 *********************************************************************************************
 
+((Pre-built ready-to-use binaries are located in the "prebuilt" folder))
 
 What is SystemInstaller?
 ----------------------->
@@ -54,7 +55,7 @@ How do I use SystemInstaller?
 
     4.) Shut down your HP TouchPad, then press the power and volume up buttons to activate bootie mode - you should see a usb logo appear on the tablet's screen.
 
-    5.) Open a command prompt or terminal window, navigate to the osinstall.d folder, and run:
+    5.) Open a command prompt or terminal window, navigate to where SystemInstaller is located on your computer, and run:
         novacom boot mem:// < SystemInstaller
 
         Please be patient as the installer will take anything from a couple of minutes to an hour depending on the size of your OS installation.
@@ -68,7 +69,7 @@ How do I use SystemUninstaller?
 
     1.) Follow steps 2 and 4 above.
 
-    2.) Open a command prompt or terminal window and run:
+    2.) Open a command prompt or terminal window, navigate to where SystemUninstaller is located on your computer, and run:
         novacom boot mem:// < SystemUninstaller
 
         Wait a minute or two for the uninstaller to do it's work. your done!

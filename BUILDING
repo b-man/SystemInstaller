@@ -1,0 +1,8 @@
+How to build SystemInstaller/Uninstaller
+--------------------------------------->
+
+ => In order to build SystemInstaller/Uninstaller, you must have a mac/linux box with mkimage installed.
+
+To build SystemInstaller/Uninstaller, simply type 'make'. 
+
+ * Please refer to "README" for details in using SystemInstaller/Uninstaller.
