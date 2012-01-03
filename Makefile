@@ -1,8 +1,8 @@
 all: gen_images build_installer build_uninstaller
 
 gen_images:
-	dd if=/dev/zero of=ramdisk.install bs=1024 count=0 seek=16384
-	dd if=/dev/zero of=ramdisk.uninstall bs=1024 count=0 seek=16384
+	dd if=/dev/zero of=ramdisk.install bs=1024 count=0 seek=13312
+	dd if=/dev/zero of=ramdisk.uninstall bs=1024 count=0 seek=13312
 	mke2fs -Fvm0 ./ramdisk.install
 	mke2fs -Fvm0 ./ramdisk.uninstall
 	mkdir ./img
